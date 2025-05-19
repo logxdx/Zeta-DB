@@ -1,6 +1,6 @@
 import torch
 from transformers import CLIPProcessor, CLIPModel
-from PIL import Image
+from PIL import Image, UnidentifiedImageError
 import numpy as np
 import logging
 
@@ -27,6 +27,7 @@ class CLIPEmbedder:
         self.model_name = model_name
         self.normalize = metric_type == 'COSINE'
         logger.info(f"Initializing CLIPEmbedder with model: {self.model_name} on device: {self.device}")
+        logger.info(f"Embeddings will be normalized: {self.normalize}")
         try:
             self.model = CLIPModel.from_pretrained(self.model_name).to(self.device)
             self.processor = CLIPProcessor.from_pretrained(self.model_name)
@@ -74,8 +75,13 @@ class CLIPEmbedder:
         Returns:
             A numpy array representing the image embedding, or None if an error occurs.
         """
+        if not image_path:
+            logger.warning("Attempted to embed image from an empty path.")
+            return None
+        logger.debug(f"Attempting to embed image: {image_path}")
         try:
-            image = Image.open(image_path).convert("RGB") # Ensure image is RGB
+            img = Image.open(image_path)
+            image = img.convert("RGB") # Ensure image is RGB
             tokens = self.processor(text=None, images=image, return_tensors="pt", padding=True).to(self.device)
             with torch.no_grad():
                 image_features = self.model.get_image_features(**tokens)
@@ -85,10 +91,14 @@ class CLIPEmbedder:
                 vec = normalize_vectors(vec)
 
             # Ensure the output is consistently 1D for single images after potential normalization
+            logger.info(f"Successfully embedded image: {image_path}")
             return vec.squeeze() if vec.ndim > 1 else vec
 
         except FileNotFoundError:
             logger.error(f"Image file not found: {image_path}")
+            return None
+        except UnidentifiedImageError:
+            logger.error(f"Cannot identify image file (possibly corrupt or unsupported format): {image_path}")
             return None
         except Exception as e:
             logger.error(f"Failed to embed image '{image_path}': {e}", exc_info=True)
@@ -107,6 +117,7 @@ class CLIPEmbedder:
         if not text:
             logger.warning("Attempted to embed empty text.")
             return None
+        logger.debug(f"Attempting to embed text (first 50 chars): {text[:50]}...")
         try:
             tokens = self.processor(text=text, images=None, return_tensors="pt", padding=True).to(self.device)
             with torch.no_grad():
@@ -117,6 +128,7 @@ class CLIPEmbedder:
                 vec = normalize_vectors(vec)
 
             # Ensure the output is consistently 1D for single text inputs
+            logger.info(f"Successfully embedded text (first 50 chars): {text[:50]}...")
             return vec.squeeze() if vec.ndim > 1 else vec
 
         except Exception as e:
