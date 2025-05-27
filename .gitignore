@@ -1,1 +1,6 @@
 venv
+*.jpg
+*.png
+data
+images_to_process
+__pycache__
