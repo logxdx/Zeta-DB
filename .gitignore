@@ -2,5 +2,5 @@ venv
 *.jpg
 *.png
 data
-images_to_process
+images
 __pycache__
