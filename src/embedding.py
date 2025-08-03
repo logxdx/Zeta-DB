@@ -1,71 +1,56 @@
-import torch
-from transformers import CLIPProcessor, CLIPModel
+from transformers import AutoModel
 from PIL import Image, UnidentifiedImageError
 import numpy as np
 import logging
 
 # Import configuration and utility functions
-from src.config import CLIP_MODEL_NAME, DEVICE, FAISS_METRIC_TYPE
-from src.utils import normalize_vectors
+from .config import CLIP_MODEL_NAME, DEVICE, EMBEDDING_DIMENSION
+from .utils import normalize_vectors
 
 # Setup logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+)
 logger = logging.getLogger(__name__)
+
 
 class CLIPEmbedder:
     """Handles loading the CLIP model and generating embeddings."""
 
-    def __init__(self, model_name: str = CLIP_MODEL_NAME, device: str = DEVICE, metric_type: str = FAISS_METRIC_TYPE):
+    def __init__(
+        self,
+        model_name: str = CLIP_MODEL_NAME,
+        device: str = DEVICE,
+        embedding_dim: int = EMBEDDING_DIMENSION,
+    ):
         """
         Initializes the CLIP model and processor.
 
         Args:
-            model_name: The name of the pre-trained CLIP model to load.
-            device: The device to run the model on ('cuda' or 'cpu').
+            metric_type: The type of distance metric to use for FAISS indexing ('l2', 'DOT', or 'COSINE').
+            embedding_dim: The dimension of the embeddings to be generated (64 to 1024).
         """
         self.device = device
         self.model_name = model_name
-        self.normalize = metric_type == 'COSINE'
-        logger.info(f"Initializing CLIPEmbedder with model: {self.model_name} on device: {self.device}")
-        logger.info(f"Embeddings will be normalized: {self.normalize}")
+        self.embedding_dim = embedding_dim
+        logger.info(
+            f"Initializing CLIPEmbedder with model: {self.model_name} on device: {self.device}"
+        )
         try:
-            self.model = CLIPModel.from_pretrained(self.model_name).to(self.device)
-            self.processor = CLIPProcessor.from_pretrained(self.model_name)
-            self.model.eval() # Set model to evaluation mode
-            logger.info("CLIP model and processor loaded successfully.")
+            self.model = AutoModel.from_pretrained(
+                self.model_name, trust_remote_code=True
+            ).to(self.device)
+            logger.info("CLIP model loaded successfully.")
             # Get embedding dimension dynamically
-            self.embedding_dim = self._get_embedding_dim()
-            logger.info(f"Detected embedding dimension: {self.embedding_dim}")
         except Exception as e:
-            logger.error(f"Failed to load CLIP model '{self.model_name}': {e}", exc_info=True)
+            logger.error(
+                f"Failed to load CLIP model '{self.model_name}': {e}", exc_info=True
+            )
             raise
 
-    def _get_embedding_dim(self) -> int:
-        """Helper to determine the output embedding dimension."""
-        # Embed a dummy text to find the output dimension
-        dummy_text = "dimension check"
-        try:
-            embedding = self.embed_text(dummy_text) # Don't normalize for dim check
-            if embedding is not None:
-                return embedding.shape[-1]
-            else:
-                # Fallback based on common model knowledge if embedding failed
-                logger.warning("Embedding dummy text failed, attempting fallback dimension check.")
-                if "base" in self.model_name.lower(): return 512
-                if "large" in self.model_name.lower(): return 768
-                raise ValueError("Could not determine embedding dimension.")
-        except Exception as e:
-            logger.error(f"Error determining embedding dimension: {e}", exc_info=True)
-            # Provide common defaults or raise error
-            if "base" in self.model_name.lower():
-                logger.warning("Falling back to dimension 512 based on model name \'base\'.")
-                return 512
-            if "large" in self.model_name.lower():
-                logger.warning("Falling back to dimension 768 based on model name \'large\'.")
-                return 768
-            raise ValueError(f"Could not determine embedding dimension for model {self.model_name}.") from e
-
-    def embed_image(self, image_path: str) -> np.ndarray | None:
+    def embed_image(
+        self, image_path: str, normalize: bool = False
+    ) -> np.ndarray | None:
         """
         Generates an embedding for a given image file.
 
@@ -81,30 +66,32 @@ class CLIPEmbedder:
         logger.debug(f"Attempting to embed image: {image_path}")
         try:
             img = Image.open(image_path)
-            image = img.convert("RGB") # Ensure image is RGB
-            tokens = self.processor(text=None, images=image, return_tensors="pt", padding=True).to(self.device)
-            with torch.no_grad():
-                image_features = self.model.get_image_features(**tokens)
-            vec = image_features.detach().cpu().numpy()
-
-            if self.normalize:
-                vec = normalize_vectors(vec)
-
+            image = img.convert("RGB")  # Ensure image is RGB
+            image_embeddings = self.model.encode_image(
+                image, truncate_dim=self.embedding_dim
+            )
+            if normalize:
+                image_embeddings = normalize_vectors(image_embeddings)
             # Ensure the output is consistently 1D for single images after potential normalization
             logger.info(f"Successfully embedded image: {image_path}")
-            return vec.squeeze() if vec.ndim > 1 else vec
-
+            return (
+                image_embeddings.squeeze()
+                if image_embeddings.ndim > 1
+                else image_embeddings
+            )
         except FileNotFoundError:
             logger.error(f"Image file not found: {image_path}")
             return None
         except UnidentifiedImageError:
-            logger.error(f"Cannot identify image file (possibly corrupt or unsupported format): {image_path}")
+            logger.error(
+                f"Cannot identify image file (possibly corrupt or unsupported format): {image_path}"
+            )
             return None
         except Exception as e:
             logger.error(f"Failed to embed image '{image_path}': {e}", exc_info=True)
             return None
 
-    def embed_text(self, text: str) -> np.ndarray | None:
+    def embed_text(self, text: str, normalize: bool = False) -> np.ndarray | None:
         """
         Generates an embedding for a given text string.
 
@@ -117,20 +104,20 @@ class CLIPEmbedder:
         if not text:
             logger.warning("Attempted to embed empty text.")
             return None
-        logger.debug(f"Attempting to embed text (first 50 chars): {text[:50]}...")
+        logger.debug(f"Attempting to embed text: {text[:50]}...")
         try:
-            tokens = self.processor(text=text, images=None, return_tensors="pt", padding=True).to(self.device)
-            with torch.no_grad():
-                text_features = self.model.get_text_features(**tokens)
-            vec = text_features.detach().cpu().numpy()
-
-            if self.normalize:
-                vec = normalize_vectors(vec)
-
+            text_embeddings = self.model.encode_text(
+                text, truncate_dim=self.embedding_dim
+            )
+            if normalize:
+                text_embeddings = normalize_vectors(text_embeddings)
             # Ensure the output is consistently 1D for single text inputs
-            logger.info(f"Successfully embedded text (first 50 chars): {text[:50]}...")
-            return vec.squeeze() if vec.ndim > 1 else vec
-
+            logger.info(f"Successfully embedded text")
+            return (
+                text_embeddings.squeeze()
+                if text_embeddings.ndim > 1
+                else text_embeddings
+            )
         except Exception as e:
             logger.error(f"Failed to embed text '{text[:50]}...': {e}", exc_info=True)
             return None
