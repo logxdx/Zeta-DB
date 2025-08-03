@@ -4,4 +4,4 @@ from .utils import normalize_vectors
 
 from .embedding import CLIPEmbedder
 
-from .index import FaissIndexer
+from .index import LanceDBIndex, VectorObject
