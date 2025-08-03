@@ -36,7 +36,9 @@ class LanceDBIndex:
         index_path: Union[str, Path] = INDEX_FILE,
         table_name: str = "embeddings",
     ):
-        self.db = lancedb.connect(str(index_path), read_consistency_interval=timedelta(seconds=1))
+        self.db = lancedb.connect(
+            str(index_path), read_consistency_interval=timedelta(seconds=1)
+        )
         self.table_name = table_name
         self.table_schema = pa.schema(
             [
@@ -47,7 +49,9 @@ class LanceDBIndex:
             ]
         )
 
-    def insert_documents(self, docs: List[Dict], table_name: str = "embeddings") -> None:
+    def insert_documents(
+        self, docs: List[Dict], table_name: str = "embeddings"
+    ) -> None:
         """
         Insert a list of VectorObject documents into the index.
         """
@@ -56,12 +60,14 @@ class LanceDBIndex:
                 self.table = self.db.open_table(name)
                 break
         else:
-            self.table = self.db.create_table(table_name, exist_ok=True, schema=self.table_schema)
+            self.table = self.db.create_table(
+                table_name, exist_ok=True, schema=self.table_schema
+            )
         self.table.add(docs)
 
     def get_tables(self) -> List[str]:
         return self.db.table_names()
-    
+
     def drop_table(self, table_name: str) -> None:
         try:
             self.db.drop_table(table_name)
@@ -89,17 +95,5 @@ class LanceDBIndex:
                 break
         else:
             print(f"Table {table_name} not found in database.")
-        results = (
-            self.table.search(query=query_vector).limit(top_k).to_list()
-        )
+        results = self.table.search(query=query_vector).limit(top_k).to_list()
         return results
-
-
-# Example Usage:
-# index = LanceDBIndex("./my_lancedb", table_name="docs")
-# index.create_index(vector_dim=512, metric="IP")
-# docs = [VectorObject(id="1", vector=[...], document=Document(id="1", type="text", content="Hello", timestamp=datetime.utcnow()))]
-# index.insert_documents(docs)
-# results = index.search(query_vector=[...], top_k=5)
-# index.delete_by_id("1")
-# index.delete_index()
