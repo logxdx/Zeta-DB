@@ -27,7 +27,8 @@ class CLIPEmbedder:
         Initializes the CLIP model and processor.
 
         Args:
-            metric_type: The type of distance metric to use for FAISS indexing ('l2', 'DOT', or 'COSINE').
+            model_name: The name of the CLIP model to use.
+            device: The device to run the model on (e.g., 'cuda' or 'cpu').
             embedding_dim: The dimension of the embeddings to be generated (64 to 1024).
         """
         self.device = device
