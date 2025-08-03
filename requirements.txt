@@ -1,0 +1,8 @@
+einops
+timm
+transformers
+torch
+pillow
+numpy
+lancedb
+pydantic
