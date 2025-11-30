@@ -157,7 +157,6 @@ def create_gradio_interface():
                     table_name = gr.Dropdown(
                         choices=indexer.get_tables(),
                         label="Table Name",
-                        value=indexer.get_tables()[0],
                     )
                     top_k_slider = gr.Slider(
                         minimum=1,

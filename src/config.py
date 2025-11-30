@@ -4,7 +4,7 @@ import torch
 # --- Project Root ---
 # The script is run from the project root
 # Goes up two levels from src/config.py to zeta db/
-PROJECT_ROOT = Path(__file__).parent.parent 
+PROJECT_ROOT = Path(__file__).parent.parent
 
 # --- Data Paths ---
 DATA_DIR = PROJECT_ROOT / "data"
@@ -21,10 +21,10 @@ CLIP_MODEL_NAME = "jinaai/jina-clip-v2"
 EMBEDDING_DIMENSION = 1024
 
 # --- Search ---
-DEFAULT_SEARCH_K = 10 # Default number of nearest neighbors to retrieve
+DEFAULT_SEARCH_K = 10  # Default number of nearest neighbors to retrieve
 
 # --- Ingestion ---
-SUPPORTED_IMAGE_EXTENSIONS = ('.png', '.jpg', '.jpeg')
+SUPPORTED_IMAGE_EXTENSIONS = (".png", ".jpg", ".jpeg")
 
 # --- Device ---
 # Automatically detect CUDA, fallback to CPU
